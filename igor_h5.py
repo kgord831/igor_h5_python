@@ -44,8 +44,8 @@ np.save('energy', en_axis)
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 # Plot the ith energy isosurface
-i = 432
-#i = 230
+#i = 432
+i = 230
 imin = i - 5
 imax = i + 5
 for i in [432, 345, 190]:
