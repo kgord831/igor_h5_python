@@ -19,7 +19,7 @@ def load_wave_from_igor_h5(file_name, wave_name, dim_names=None):
                     dim_names += [str(i)]
             else:
                 dim_names = dim_names[:(rank - len(dim_names))]
-    dim_sizes = eq5q.shape
+    dim_sizes = data.shape
     dim_scales = []
     for i in range(rank):
         dim_scales.append(np.arange(dim_sizes[i])*data.attrs['IGORWaveScaling'][i + 1,0] + data.attrs['IGORWaveScaling'][i + 1,1])
@@ -41,7 +41,7 @@ def load_map_from_maestro(file_name, wave_name, hv, work_fcn=4.3):
     dim_sizes = data.shape
     dim_scales = []
     for i in range(3):
-        dim_scales.append(np.arange(dim_sizes[i])*data.attrs['IGORWaveScaling'][i + 1,0] + data.attrs['IGORWaveScaling'][i + 1,1])
+        dim_scales.append(np.arange(dim_sizes[i])*data.attrs['IGORWaveScaling'][i + 1, 0] + data.attrs['IGORWaveScaling'][i + 1, 1])
     dim_scales[1] = 92 + dim_scales[1] - work_fcn  # convert binding to kinetic energy
     dset = xr.Dataset({'counts': (['slit angle', 'energy', 'perp angle'], data)},
     coords={'energy': dim_scales[1], 'slit angle': dim_scales[0], 'perp angle': dim_scales[2]})
@@ -49,15 +49,32 @@ def load_map_from_maestro(file_name, wave_name, hv, work_fcn=4.3):
     return dset
 
 def process_map(dset, slit_offset, tilt_offset, azimuth_offset):
-    dset.coords['slit angle'].values = (dset.coords['slit angle'].values - slit_offset)*np.pi/180
-    dset.coords['perp angle'].values = (dset.coords['perp angle'].values - slit_offset)*np.pi/180
-    en, phi, theta = np.meshgrid(dset.coords['energy'], dset.coords['slit angle'], dset.coords['perp angle'], indexing='ij')
+    slit_angle = (dset.coords['slit angle'].values - slit_offset)*np.pi/180
+    perp_angle = (dset.coords['perp angle'].values - slit_offset)*np.pi/180
+    en, phi, theta = np.meshgrid(dset.coords['energy'].values, slit_angle, perp_angle, indexing='ij')
     kperp = 0.512*np.sqrt(en)*np.sin(theta)
     kpar = 0.512*np.sqrt(en)*np.cos(theta)*np.sin(phi)
     azimuth_offset = azimuth_offset*np.pi/180
-    kperp_rot = np.cos(azimuth_offset)*kperp - np.sin(azimuth_offset)*kpar
-    kpar_rot = np.sin(azimuth_offset)*kperp + np.cos(azimuth_offset)*kpar
+    kpar_rot = np.cos(azimuth_offset)*kperp - np.sin(azimuth_offset)*kpar
+    kperp_rot = np.sin(azimuth_offset)*kperp + np.cos(azimuth_offset)*kpar
+    dset['kpar'] = xr.DataArray(kpar_rot, dims=['energy', 'slit angle', 'perp angle'],
+    coords={'energy': dset.coords['energy'].values, 'slit angle': dset.coords['slit angle'].values, 'perp angle': dset.coords['perp angle'].values})
+    dset['kperp'] = xr.DataArray(kperp_rot, dims=['energy', 'slit angle', 'perp angle'],
+    coords={'energy': dset.coords['energy'].values, 'slit angle': dset.coords['slit angle'].values, 'perp angle': dset.coords['perp angle'].values})
+    dset = dset.set_coords(['kpar', 'kperp'])
+    return dset
     
+
+arpes_map = process_map(load_map_from_maestro('map.h5', 'HoBi_f00000', 92), 1.313, -2.4, -30)
+FM = arpes_map['counts'].sel(energy=(92 - 4.3), method='nearest')
+print(FM)
+kx = xr.DataArray(np.linspace(-1, 1, 50))
+ky = xr.DataArray(np.linspace(-1, 1, 50))
+FMi = FM.interp(kpar=kx, kperp=ky)
+import matplotlib.pyplot as plt
+plt.figure(1)
+FMi.plot()
+plt.show()
 
 # if __name__ == '__main__':
 
